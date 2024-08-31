@@ -79,14 +79,14 @@ class ChangedPasswordUser(BaseModel):
     new_password: str
 
 
-class DBUser(BaseUser, SQLModel, table=True):
+class DBUser(SQLModel, table=True):
     __tablename__ = "users"
     id: int | None = Field(default=None, primary_key=True)
 
-    password: str
+    hashed_password: str
 
-    register_date: datetime.datetime = Field(default_factory=datetime.datetime.now)
-    updated_date: datetime.datetime = Field(default_factory=datetime.datetime.now)
+    register_date: datetime = Field(default_factory=datetime.now)
+    updated_date: datetime = Field(default_factory=datetime.now)
     last_login_date: datetime.datetime | None = Field(default=None)
 
     async def has_roles(self, roles):
@@ -95,15 +95,15 @@ class DBUser(BaseUser, SQLModel, table=True):
                 return True
         return False
 
-    async def get_encrypted_password(self, plain_password):
+    async def get_encrypted_password(self, plain_password: str) -> str:
         return bcrypt.hashpw(
-            plain_password.encode("utf-8"), salt=bcrypt.gensalt()
+            plain_password.encode("utf-8"), bcrypt.gensalt()
         ).decode("utf-8")
 
-    async def set_password(self, plain_password):
-        self.password = await self.get_encrypted_password(plain_password)
+    async def set_password(self, plain_password: str):
+        self.hashed_password = await self.get_encrypted_password(plain_password)
 
-    async def verify_password(self, plain_password):
+    async def verify_password(self, plain_password: str) -> bool:
         return bcrypt.checkpw(
-            plain_password.encode("utf-8"), self.password.encode("utf-8")
+            plain_password.encode("utf-8"), self.hashed_password.encode("utf-8")
         )

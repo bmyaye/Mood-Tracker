@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, Request, status
+from flask import session
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 from typing import Annotated
@@ -6,7 +7,7 @@ from typing import Annotated
 from .. import deps
 from .. import models
 
-router = APIRouter(prefix="/users", tags=["users"])
+router = APIRouter()
 
 
 @router.get("/me")
@@ -62,35 +63,26 @@ async def create(
 async def change_password(
     user_id: str,
     password_update: models.ChangedPassword,
-    session: Annotated[AsyncSession, Depends(models.get_session)],
     current_user: models.User = Depends(deps.get_current_user),
 ) -> dict:
-    # Get the user by user_id
+
     user = await session.get(models.DBUser, user_id)
 
-    if not user:
+    if user:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="User not found",
+            detail="Not found this user",
         )
 
-    # Debug: Print the stored hashed password and the provided password
-    print("Stored password hash:", user.hashed_password)  # Debugging: Print the stored hashed password
-    print("Current password:", password_update.current_password)  # Debugging: Print the current password from request
-    print("Password match:", user.verify_password(password_update.current_password))  # Debugging: Check if passwords match
-
-    # Verify the current password
     if not user.verify_password(password_update.current_password):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect password",
         )
 
-    # Set new password and save changes
-    await user.set_password(password_update.new_password)
+    user.set_password(password_update.new_password)
     session.add(user)
     await session.commit()
-
     return {"msg": "Password updated successfully"}
 
 
@@ -126,7 +118,7 @@ async def update(
 
 @router.delete("/{user_id}/delete_account")
 async def delete(
-    user_id: str,
+    user_id: int,
     session: Annotated[AsyncSession, Depends(models.get_session)],
     current_user: models.User = Depends(deps.get_current_user),
 ) -> dict:

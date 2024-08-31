@@ -12,26 +12,29 @@ from .. import config
 from .. import security
 
 
-router = APIRouter(prefix="/authentications", tags=["authentications"])
+router = APIRouter()
 
 
 settings = config.get_settings()
 
 
 @router.post("/token")
-async def some_function(session, form_data):
-    user = None  # ตัวแปรนี้อาจถูกกำหนดก่อนหน้านี้
+async def authentication(
+    form_data: Annotated[OAuth2PasswordRequestForm, Depends()],
+    session: Annotated[models.AsyncSession, Depends(models.get_session)],
+) -> models.Token:
+
+    result = await session.exec(
+        select(models.DBUser).where(models.DBUser.username == form_data.username)
+    )
+
+    user = result.one_or_none()
+
     if not user:
-        result = await session.execute(
+        result = await session.exec(
             select(models.DBUser).where(models.DBUser.email == form_data.username)
         )
-        user = result.scalar_one_or_none()
-
-    # ดำเนินการต่อด้วยโค้ดส่วนที่เหลือของคุณ
-    if user:
-        # ประมวลผลข้อมูลของผู้ใช้
-        pass
-
+        user = result.one_or_none()
 
     if not user:
         raise HTTPException(
