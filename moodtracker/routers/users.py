@@ -1,137 +1,126 @@
-from fastapi import APIRouter, Depends, HTTPException, Request, status
-from flask import session
+from typing import Annotated, Optional
+from fastapi import APIRouter, Depends, HTTPException, Body
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
-from sqlmodel.ext.asyncio.session import AsyncSession
-from typing import Annotated
+from moodtracker.models import get_session
+from moodtracker.models.users import DBUser, RegisteredUser,ChangedPassword,DeleteUserRequest
+from pydantic import BaseModel
+import datetime
+
 
 from .. import deps
 from .. import models
 
-router = APIRouter()
+router = APIRouter(
+    prefix="/users",
+    tags=["Users"]
+)
 
+# Create User
+@router.post("/")
+async def create_user(
+    user: RegisteredUser,
+    session: AsyncSession = Depends(get_session)
+    )->  models.User:
+    query = select(DBUser).where(DBUser.username == user.username)
+    result = await session.execute(query)
+    existing_user = result.scalar_one_or_none()
 
-@router.get("/me")
-async def get_me(
-    current_user: models.User = Depends(deps.get_current_user),
-) -> models.User:
-    return current_user
-
-
-# @router.get("/{user_id}")
-# async def get(
-#     user_id: str,
-#     session: Annotated[AsyncSession, Depends(models.get_session)],
-# ) -> models.User:
-#     user = await session.get(models.DBUser, user_id)
-#     if not user:
-#         raise HTTPException(
-#             status_code=status.HTTP_404_NOT_FOUND,
-#             detail="Not found this user",
-#         )
-#     return user
-
-
-@router.post("/create_account")
-async def create(
-    user_info: models.RegisteredUser,
-    session: Annotated[AsyncSession, Depends(models.get_session)]
-) -> models.DBUser:
-    # Check if username exists
-    result = await session.execute(
-        select(models.DBUser).where(models.DBUser.username == user_info.username)
-    )
-    user = result.scalar_one_or_none()
+    if existing_user:
+        raise HTTPException(status_code=400, detail="Username already exists")
     
-    print("Attempting to create user with username:", user_info.username)  # Debug: Print username being checked
-    print("Existing user found:", user)  # Debug: Print existing user if found
-
-    if user:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="This username already exists.",
-        )
-
-    # Create new user
-    user = models.DBUser.from_orm(user_info)
-    await user.set_password(user_info.password)
-    session.add(user)
-    await session.commit()
-
-    return user
-
-@router.put("/{user_id}/change_password")
-async def change_password(
-    user_id: str,
-    password_update: models.ChangedPassword,
-    current_user: models.User = Depends(deps.get_current_user),
-) -> dict:
-
-    user = await session.get(models.DBUser, user_id)
-
-    if user:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Not found this user",
-        )
-
-    if not user.verify_password(password_update.current_password):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect password",
-        )
-
-    user.set_password(password_update.new_password)
-    session.add(user)
-    await session.commit()
-    return {"msg": "Password updated successfully"}
-
-
-@router.put("/{user_id}/update_data")
-async def update(
-    user_id: int,
-    user_update: models.UpdatedUser,
-    session: Annotated[AsyncSession, Depends(models.get_session)],
-    current_user: models.User = Depends(deps.get_current_user),
-) -> models.User:
-
-    db_user = await session.get(models.DBUser, user_id)
-
-    if not db_user:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Not found this user",
-        )
-    
-    if not db_user.verify_password(user_update.password):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect password",
-        )
-
-    db_user.sqlmodel_update(user_update)
+    db_user = DBUser(**user.dict())
+    await db_user.set_password(user.password)  # Encrypt password before saving
     session.add(db_user)
     await session.commit()
     await session.refresh(db_user)
 
+
+
+    await session.commit()  # Commit the Point to generate the point_id
+
     return db_user
 
+@router.get("/me")
+def get_me(current_user: models.User = Depends(deps.get_current_user)) -> models.User:
+    return current_user
 
-@router.delete("/{user_id}/delete_account")
-async def delete(
-    user_id: int,
+# Read User
+# @router.get("/{user_id}")
+# async def get_user(
+#     user_id: int,
+#     session: Annotated[AsyncSession, Depends(models.get_session)],
+#     current_user: models.User = Depends(deps.get_current_user),
+# ) -> models.User:
+#     user = await session.get(models.DBUser, user_id)
+#     if not user:
+#         raise HTTPException(
+#             status_code=404,
+#             detail="Not found this user",
+#         )
+#     return user
+
+# Update User
+@router.put("/edit-profile/")
+async def update_user(
+    user_update: models.UpdatedUser,
     session: Annotated[AsyncSession, Depends(models.get_session)],
     current_user: models.User = Depends(deps.get_current_user),
-) -> dict:
-
-    user = await session.get(models.DBUser, user_id)
-
+)-> models.User:
+    user = await session.get(DBUser, current_user.id)
     if not user:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Not found this user",
-        )
+        raise HTTPException(status_code=404, detail="User not found")
 
-    session.delete(user)
+    if user_update.username is not None:
+        user.username = user_update.username
+    if user_update.email is not None:
+        user.email = user_update.email
+    if user_update.first_name is not None:
+        user.first_name = user_update.first_name
+    if user_update.last_name is not None:
+        user.last_name = user_update.last_name
+    session.add(user)
     await session.commit()
+    await session.refresh(user)
+    return user
 
-    return {"message": "User deleted successfully."}
+# Change Password
+@router.put("/change-password/")
+async def change_password(
+    request: ChangedPassword,
+    session: Annotated[AsyncSession, Depends(models.get_session)],
+    current_user: models.User = Depends(deps.get_current_user),
+):
+    user = await session.get(DBUser, current_user.id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    if not await user.verify_password(request.current_password):
+        raise HTTPException(status_code=400, detail="Current password is incorrect")
+    
+    if await user.verify_password(request.new_password):
+        raise HTTPException(status_code=400, detail="New password must be different from the current password")
+
+    await user.set_password(request.new_password)
+    session.add(user)
+    await session.commit()
+    await session.refresh(user)
+    return {"message": "Password updated successfully"}
+
+# Delete User
+@router.delete("/delete/")
+async def delete_user(
+    request: DeleteUserRequest,
+    session: Annotated[AsyncSession, Depends(models.get_session)],
+    current_user: models.User = Depends(deps.get_current_user),
+):
+    user = await session.get(DBUser, current_user.id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    if not await user.verify_password(request.password):
+        raise HTTPException(status_code=400, detail="Password is incorrect")
+
+    await session.delete(user)
+    await session.commit()
+    return {"message": "User deleted successfully"}

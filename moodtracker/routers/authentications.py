@@ -1,24 +1,28 @@
-import datetime
+from fastapi import APIRouter, Depends, HTTPException, Security, status
+from fastapi.security import (
+    HTTPAuthorizationCredentials,
+    HTTPBasicCredentials,
+    HTTPBearer,
+    OAuth2PasswordRequestForm,
+)
+
 
 from sqlmodel import select
 from typing import Annotated
-from fastapi import APIRouter, Depends, HTTPException, status, Security
-from fastapi.security import HTTPAuthorizationCredentials, HTTPBasicCredentials, HTTPBearer, OAuth2PasswordRequestForm
-from sqlalchemy.ext.asyncio import AsyncSession
+import datetime
 
-
-from .. import models
 from .. import config
+from .. import models
 from .. import security
 
-
-router = APIRouter()
-
+router = APIRouter(tags=["Authentication"])
 
 settings = config.get_settings()
 
 
-@router.post("/token")
+@router.post(
+    "/token",
+)
 async def authentication(
     form_data: Annotated[OAuth2PasswordRequestForm, Depends()],
     session: Annotated[models.AsyncSession, Depends(models.get_session)],
@@ -72,4 +76,5 @@ async def authentication(
         expires_at=datetime.datetime.now() + access_token_expires,
         issued_at=user.last_login_date,
         user_id=user.id,
+
     )

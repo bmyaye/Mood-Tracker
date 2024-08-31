@@ -7,7 +7,7 @@ from .. import models
 from .. import deps
 
 
-router = APIRouter()
+router = APIRouter(prefix="/moods", tags=["Moods"])
 
 
 @router.get("")
