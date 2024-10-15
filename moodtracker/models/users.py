@@ -10,8 +10,6 @@ class BaseUser(BaseModel):
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)
     username: str = pydantic.Field(json_schema_extra=dict(example="username"))
     email: str = pydantic.Field(json_schema_extra=dict(example="user@email.local"))
-    first_name: str = pydantic.Field(json_schema_extra=dict(example="Firstname"))
-    last_name: str = pydantic.Field(json_schema_extra=dict(example="Lastname"))
     
 class User(BaseUser):
     id: int

@@ -9,9 +9,8 @@ from sqlmodel import Field, SQLModel, create_engine, Session, select, Relationsh
 class BaseMood(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     description: str | None = None
-    mood_type: int
-    location: str | None = None
-    user_id: int | None = 0
+    mood_type: str
+
 
 
 class CreatedMood(BaseMood):
